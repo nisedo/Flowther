@@ -12,6 +12,8 @@ let jumpHighlightTimeout;
 let jumpHighlightSeq = 0;
 
 function activate(context) {
+  vscode.commands.executeCommand("setContext", "flowther.isFocused", false);
+
   jumpHighlightDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     backgroundColor: new vscode.ThemeColor("editor.findMatchHighlightBackground"),
@@ -40,6 +42,14 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("flowther.hideFlow", (node) => provider.hideFlow(node))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("flowther.focusFlow", (node) => provider.focusFlow(node))
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("flowther.clearFocus", () => provider.clearFocus())
   );
 
   context.subscriptions.push(
@@ -103,6 +113,7 @@ class WorkflowsProvider {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+    this._focusFlowId = null;
     this._loading = false;
     this._lastError = null;
     this._analysis = null;
@@ -198,6 +209,9 @@ class WorkflowsProvider {
     }
 
     if (!this._files.length) {
+      if (this._focusFlowId) {
+        return [{ kind: "message", message: "Focus mode is active. Clear focus to show all workflows." }];
+      }
       const hadAny =
         !!this._analysis &&
         Array.isArray(this._analysis.files) &&
@@ -227,6 +241,31 @@ class WorkflowsProvider {
     }
 
     return [];
+  }
+
+  async focusFlow(node) {
+    if (!node || node.kind !== "entrypoint" || !node.flowId) {
+      return;
+    }
+    this._focusFlowId = node.flowId;
+    vscode.commands.executeCommand("setContext", "flowther.isFocused", true);
+    if (this._analysis) {
+      this._rebuildFiles();
+      this._onDidChangeTreeData.fire();
+    } else {
+      await this.refresh({ silent: true });
+    }
+  }
+
+  async clearFocus() {
+    this._focusFlowId = null;
+    vscode.commands.executeCommand("setContext", "flowther.isFocused", false);
+    if (this._analysis) {
+      this._rebuildFiles();
+      this._onDidChangeTreeData.fire();
+    } else {
+      await this.refresh({ silent: true });
+    }
   }
 
   async refresh(options = {}) {
@@ -401,6 +440,16 @@ class WorkflowsProvider {
           .map((ep) => normalizeEntrypoint(ep, workspaceRoot)),
       }))
       .filter((fileNode) => (fileNode.entrypoints || []).length > 0);
+
+    if (this._focusFlowId) {
+      const focusId = this._focusFlowId;
+      this._files = this._files
+        .map((file) => ({
+          ...file,
+          entrypoints: (file.entrypoints || []).filter((ep) => ep.flowId === focusId),
+        }))
+        .filter((fileNode) => (fileNode.entrypoints || []).length > 0);
+    }
 
     this._files.sort((a, b) => a.fileRel.localeCompare(b.fileRel));
     for (const f of this._files) {

@@ -2,7 +2,7 @@
   "name": "flowther",
   "displayName": "Flowther",
   "description": "Workflow explorer for Solidity projects using Slither",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"
@@ -15,6 +15,8 @@
     "onView:flowther.workflows",
     "onCommand:flowther.refreshWorkflows",
     "onCommand:flowther.hideFlow",
+    "onCommand:flowther.focusFlow",
+    "onCommand:flowther.clearFocus",
     "onCommand:flowther.unhideAllFlows",
     "onCommand:flowther.hideFile",
     "onCommand:flowther.unhideFlowsInFile",
@@ -56,6 +58,17 @@
         "category": "Flowther"
       },
       {
+        "command": "flowther.focusFlow",
+        "title": "Show Only This Flow",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.clearFocus",
+        "title": "Clear Focus",
+        "category": "Flowther",
+        "icon": "$(close)"
+      },
+      {
         "command": "flowther.hideFile",
         "title": "Hide File",
         "category": "Flowther"
@@ -86,6 +99,11 @@
           "group": "navigation"
         },
         {
+          "command": "flowther.clearFocus",
+          "when": "view == flowther.workflows && flowther.isFocused",
+          "group": "navigation"
+        },
+        {
           "command": "flowther.unhideAllFlows",
           "when": "view == flowther.workflows",
           "group": "navigation"
@@ -99,6 +117,11 @@
       "view/item/context": [
         {
           "command": "flowther.hideFlow",
+          "when": "view == flowther.workflows && viewItem == flowther.entrypoint",
+          "group": "flowther"
+        },
+        {
+          "command": "flowther.focusFlow",
           "when": "view == flowther.workflows && viewItem == flowther.entrypoint",
           "group": "flowther"
         },
