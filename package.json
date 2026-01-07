@@ -2,7 +2,7 @@
   "name": "flowther",
   "displayName": "Flowther",
   "description": "Workflow explorer for Solidity projects using Slither",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"
@@ -14,6 +14,7 @@
   "activationEvents": [
     "onView:flowther.workflows",
     "onCommand:flowther.refreshWorkflows",
+    "onCommand:flowther.search",
     "onCommand:flowther.hideFlow",
     "onCommand:flowther.focusFlow",
     "onCommand:flowther.clearFocus",
@@ -46,6 +47,12 @@
         "title": "Refresh Workflows",
         "category": "Flowther",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "flowther.search",
+        "title": "Search",
+        "category": "Flowther",
+        "icon": "$(search)"
       },
       {
         "command": "flowther.openFunction",
@@ -95,6 +102,11 @@
       "view/title": [
         {
           "command": "flowther.refreshWorkflows",
+          "when": "view == flowther.workflows",
+          "group": "navigation"
+        },
+        {
+          "command": "flowther.search",
           "when": "view == flowther.workflows",
           "group": "navigation"
         },

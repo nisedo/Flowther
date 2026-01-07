@@ -23,15 +23,22 @@ function activate(context) {
 
   const provider = new WorkflowsProvider(context);
 
+  const treeView = vscode.window.createTreeView(VIEW_ID, {
+    treeDataProvider: provider,
+    showCollapseAll: true,
+  });
+  provider.setTreeView(treeView);
+
   context.subscriptions.push(
-    vscode.window.createTreeView(VIEW_ID, {
-      treeDataProvider: provider,
-      showCollapseAll: true,
-    })
+    treeView
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("flowther.refreshWorkflows", () => provider.refresh())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("flowther.search", () => provider.search())
   );
 
   context.subscriptions.push(
@@ -119,6 +126,11 @@ class WorkflowsProvider {
     this._analysis = null;
     this._workspaceRoot = null;
     this._files = [];
+    this._treeView = null;
+  }
+
+  setTreeView(treeView) {
+    this._treeView = treeView;
   }
 
   getTreeItem(element) {
@@ -241,6 +253,117 @@ class WorkflowsProvider {
     }
 
     return [];
+  }
+
+  async search() {
+    if (!this._analysis || !this._workspaceRoot) {
+      await this.refresh();
+      if (!this._analysis || !this._workspaceRoot) {
+        return;
+      }
+    }
+
+    const analysis = this._analysis;
+    const workspaceRoot = this._workspaceRoot;
+
+    const items = buildSearchItems(analysis, workspaceRoot);
+    if (!items.length) {
+      vscode.window.showInformationMessage("No workflows to search. Run “Flowther: Refresh Workflows”.");
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "Search workflows and functions…",
+      matchOnDescription: true,
+      matchOnDetail: true,
+    });
+    if (!picked) {
+      return;
+    }
+
+    // Ensure the selection is visible in the tree.
+    if (this._focusFlowId) {
+      await this.clearFocus();
+    }
+    await this._unhideForSelection(picked);
+
+    const target = this._findNodeForSelection(picked);
+    if (target && this._treeView) {
+      try {
+        await this._treeView.reveal(target, { select: true, focus: true, expand: true });
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (picked.location) {
+      await openLocation(picked.location);
+    }
+  }
+
+  async _unhideForSelection(sel) {
+    if (!sel || !sel.fileRel) {
+      return;
+    }
+    let changed = false;
+
+    const hiddenFiles = this._context.workspaceState.get(HIDDEN_FILES_KEY, []);
+    if (Array.isArray(hiddenFiles) && hiddenFiles.includes(sel.fileRel)) {
+      await this._context.workspaceState.update(
+        HIDDEN_FILES_KEY,
+        hiddenFiles.filter((p) => p !== sel.fileRel)
+      );
+      changed = true;
+    }
+
+    if (sel.flowId) {
+      const hiddenFlows = this._context.workspaceState.get(HIDDEN_FLOWS_KEY, []);
+      if (Array.isArray(hiddenFlows) && hiddenFlows.includes(sel.flowId)) {
+        await this._context.workspaceState.update(
+          HIDDEN_FLOWS_KEY,
+          hiddenFlows.filter((id) => id !== sel.flowId)
+        );
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this._rebuildFiles();
+      this._onDidChangeTreeData.fire();
+    }
+  }
+
+  _findNodeForSelection(sel) {
+    if (!sel || !sel.fileRel) {
+      return null;
+    }
+    const fileNode = (this._files || []).find((f) => f.kind === "file" && f.fileRel === sel.fileRel);
+    if (!fileNode) {
+      return null;
+    }
+    if (!sel.flowId) {
+      return fileNode;
+    }
+    const entry = (fileNode.entrypoints || []).find((e) => e.kind === "entrypoint" && e.flowId === sel.flowId);
+    if (!entry) {
+      return fileNode;
+    }
+    if (!sel.path || !Array.isArray(sel.path) || sel.path.length === 0) {
+      return entry;
+    }
+    let node = entry;
+    for (const idx of sel.path) {
+      const i = Number(idx);
+      if (!Number.isFinite(i) || i < 0) {
+        break;
+      }
+      const next = (node.calls || [])[i];
+      if (!next) {
+        break;
+      }
+      node = next;
+    }
+    return node;
   }
 
   async focusFlow(node) {
@@ -815,6 +938,92 @@ function normalizeLocation(location, workspaceRoot) {
     line: Number(location.line || 0),
     character: Number(location.character || 0),
   };
+}
+
+function buildSearchItems(analysis, workspaceRoot) {
+  const items = [];
+
+  const files = Array.isArray(analysis.files) ? analysis.files : [];
+  for (const file of files) {
+    const fileRel = String(file.path || "");
+    if (!fileRel) {
+      continue;
+    }
+
+    const entrypoints = Array.isArray(file.entrypoints) ? file.entrypoints : [];
+    for (const ep of entrypoints) {
+      const flowId = ep.flowId;
+      const epLabel = String(ep.label || "");
+      const epContract = String(ep.contract || "");
+      const epLoc = normalizeLocation(ep.location, workspaceRoot);
+
+      items.push({
+        label: epLabel,
+        description: epContract || undefined,
+        detail: fileRel,
+        kind: "entrypoint",
+        fileRel,
+        flowId,
+        path: [],
+        location: epLoc,
+      });
+
+      const calls = Array.isArray(ep.calls) ? ep.calls : [];
+      collectCallItems(items, {
+        fileRel,
+        flowId,
+        entryLabel: epLabel,
+        entryContract: epContract,
+        workspaceRoot,
+        calls,
+        pathPrefix: [],
+        crumbs: [],
+      });
+    }
+  }
+
+  return items;
+}
+
+function collectCallItems(items, ctx) {
+  const { fileRel, flowId, entryLabel, workspaceRoot, calls, pathPrefix, crumbs } = ctx;
+  for (let i = 0; i < calls.length; i += 1) {
+    const call = calls[i];
+    if (!call || !call.label) {
+      continue;
+    }
+    const label = String(call.label || "");
+    const contract = String(call.contract || "");
+    const kindLabel = String(call.kindLabel || "");
+    const loc = normalizeLocation(call.location, workspaceRoot);
+
+    const nextCrumbs = [...crumbs, label];
+    const crumbTail = nextCrumbs.slice(-3).join(" › ");
+
+    items.push({
+      label,
+      description: callDescription(contract, kindLabel),
+      detail: `${fileRel} • ${entryLabel}${crumbTail ? ` • ${crumbTail}` : ""}`,
+      kind: "call",
+      fileRel,
+      flowId,
+      path: [...pathPrefix, i],
+      location: loc,
+    });
+
+    const children = Array.isArray(call.calls) ? call.calls : [];
+    if (children.length) {
+      collectCallItems(items, {
+        fileRel,
+        flowId,
+        entryLabel,
+        workspaceRoot,
+        calls: children,
+        pathPrefix: [...pathPrefix, i],
+        crumbs: nextCrumbs,
+      });
+    }
+  }
 }
 
 function runExtractor(

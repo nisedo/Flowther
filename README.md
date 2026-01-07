@@ -13,6 +13,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Right click an entry point to **Hide Flow**
 - Right click an entry point to **Show Only This Flow** (focus mode)
 - Right click a file to **Hide File** or **Unhide All Flows In File**
+- Use **Flowther: Search** to quickly jump to a flow/function by name
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
 
 ## Requirements
