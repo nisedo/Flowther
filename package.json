@@ -1,0 +1,177 @@
+{
+  "name": "flowther",
+  "displayName": "Flowther",
+  "description": "Workflow explorer for Solidity projects using Slither",
+  "version": "0.0.21",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onView:flowther.workflows",
+    "onCommand:flowther.refreshWorkflows",
+    "onCommand:flowther.hideFlow",
+    "onCommand:flowther.unhideAllFlows",
+    "onCommand:flowther.hideFile",
+    "onCommand:flowther.unhideFlowsInFile",
+    "onCommand:flowther.unhideAllFiles"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flowther",
+          "title": "Flowther",
+          "icon": "media/flowther.svg"
+        }
+      ]
+    },
+    "views": {
+      "flowther": [
+        {
+          "id": "flowther.workflows",
+          "name": "Workflows"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "flowther.refreshWorkflows",
+        "title": "Refresh Workflows",
+        "category": "Flowther",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "flowther.openFunction",
+        "title": "Open Function",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.hideFlow",
+        "title": "Hide Flow",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.hideFile",
+        "title": "Hide File",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.unhideFlowsInFile",
+        "title": "Unhide All Flows In File",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.unhideAllFlows",
+        "title": "Unhide All Flows",
+        "category": "Flowther",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "flowther.unhideAllFiles",
+        "title": "Unhide All Files",
+        "category": "Flowther",
+        "icon": "$(files)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "flowther.refreshWorkflows",
+          "when": "view == flowther.workflows",
+          "group": "navigation"
+        },
+        {
+          "command": "flowther.unhideAllFlows",
+          "when": "view == flowther.workflows",
+          "group": "navigation"
+        },
+        {
+          "command": "flowther.unhideAllFiles",
+          "when": "view == flowther.workflows",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "flowther.hideFlow",
+          "when": "view == flowther.workflows && viewItem == flowther.entrypoint",
+          "group": "flowther"
+        },
+        {
+          "command": "flowther.hideFile",
+          "when": "view == flowther.workflows && viewItem == flowther.file",
+          "group": "flowther"
+        },
+        {
+          "command": "flowther.unhideFlowsInFile",
+          "when": "view == flowther.workflows && viewItem == flowther.file",
+          "group": "flowther"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Flowther",
+      "properties": {
+        "flowther.targetPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional analysis target within the workspace (e.g. a Foundry/Hardhat project folder or a Solidity file). If empty, Flowther auto-detects a supported project in the workspace."
+        },
+        "flowther.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python interpreter used to run Slither. If empty, Flowther auto-detects (prefers the `slither` CLI's python, then falls back to python3/python)."
+        },
+        "flowther.slitherRepoPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a Slither checkout (folder containing the slither/ python package). If empty, Flowther imports Slither from the configured python environment."
+        },
+        "flowther.solcPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional solc binary path passed to Slither."
+        },
+        "flowther.solcArgs": {
+          "type": "string",
+          "default": "",
+          "description": "Optional solc args passed to Slither (e.g. --via-ir)."
+        },
+        "flowther.filterPaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional filter paths passed to Slither."
+        },
+        "flowther.excludeDependencies": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide functions defined in dependencies from the workflows tree."
+        },
+        "flowther.expandDependencies": {
+          "type": "boolean",
+          "default": true,
+          "description": "Expand call graphs into dependency-defined functions (can be noisy)."
+        },
+        "flowther.showCallOrderNumbers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prefix call tree nodes with their execution order (1., 2., 3., …)."
+        },
+        "flowther.maxCallDepth": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Maximum call graph depth to display."
+        }
+      }
+    }
+  }
+}
