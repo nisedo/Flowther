@@ -3,7 +3,16 @@
   "displayName": "Flowther",
   "description": "Workflow explorer for Solidity projects using Slither",
   "version": "0.0.24",
-  "publisher": "local",
+  "publisher": "nisedo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nisedo/Flowther.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nisedo/Flowther/issues"
+  },
+  "homepage": "https://github.com/nisedo/Flowther#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
