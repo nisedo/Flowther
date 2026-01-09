@@ -15,6 +15,29 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Right click a file to **Hide File** or **Unhide All Flows In File**
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
 
+## Icon Legend
+
+### Entry Points
+
+| Icon | Meaning |
+|------|---------|
+| ▶️ | Public/external state-changing function |
+| 🔧 | Constructor |
+| ⚡ | Receive function |
+| 🔀 | Fallback function |
+
+### Call Nodes
+
+| Icon | Badge | Meaning |
+|------|-------|---------|
+| 📦 | `INT` | Internal function call |
+| 🔗 | `EXT` | External call (cross-contract) |
+| 📚 | `LIB` | Library function call |
+| ƒ | `SOL` | Solidity builtin (e.g. `keccak256`, `abi.encode`) |
+| 🛡️ | `MOD` | Modifier |
+| 🔧 | `BASE` | Base constructor call |
+| ⚠️ | - | Recursive/cyclic call detected |
+
 ## Requirements
 
 - Python 3
