@@ -85,7 +85,7 @@ async function openLocation(location) {
   const editor = await vscode.window.showTextDocument(doc, { preview: true });
   const pos = new vscode.Position(location.line ?? 0, location.character ?? 0);
   editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.AtTop);
+  editor.revealRange(new vscode.Range(pos, pos));
 
   if (jumpHighlightDecoration) {
     const seq = ++jumpHighlightSeq;

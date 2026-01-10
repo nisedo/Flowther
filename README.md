@@ -9,7 +9,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Call trees preserve **execution order** (including repeated calls) and include modifier/base-constructor paths
 - Interface/abstract targets are resolved to concrete `override` implementations when possible
 - Click any node to jump to its definition (or to the callsite when no definition exists, e.g. `abi.encode`, `keccak256`, `bytes.concat`)
-- Jump highlights the target line for ~0.5s and reveals it at the **top** of the editor
+- Jump highlights the target line for ~0.5s
 - Right click an entry point to **Hide Flow**
 - Right click an entry point to **Show Only This Flow** (focus mode)
 - Right click a file to **Hide File** or **Unhide All Flows In File**
