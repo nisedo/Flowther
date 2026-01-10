@@ -10,6 +10,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 
 - Groups workflows by **file**
 - Entry points = `public`/`external` functions that are **not** `view`/`pure` + `constructor`/`receive`/`fallback`
+- **Inherited functions** from abstract contracts are shown in concrete contract files with dimmed `from ContractName` indicator
 - Call trees preserve **execution order** (including repeated calls) and include modifier/base-constructor paths
 - Interface/abstract targets are resolved to concrete `override` implementations when possible
 - Click any node to jump to its definition (or to the callsite when no definition exists, e.g. `abi.encode`, `keccak256`, `bytes.concat`)

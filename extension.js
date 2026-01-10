@@ -154,7 +154,9 @@ class WorkflowsProvider {
       );
       item.contextValue = "flowther.entrypoint";
       item.iconPath = entrypointIcon(element.label);
-      item.description = element.contract;
+      item.description = element.inheritedFrom
+        ? `from ${element.inheritedFrom}`
+        : element.contract;
       if (element.location?.file) {
         item.command = {
           command: "flowther.openFunction",
@@ -454,6 +456,12 @@ class WorkflowsProvider {
     this._files.sort((a, b) => a.fileRel.localeCompare(b.fileRel));
     for (const f of this._files) {
       f.entrypoints.sort((a, b) => {
+        // Sort by: inherited (false first), then line number, then label
+        const ia = a.inherited ? 1 : 0;
+        const ib = b.inherited ? 1 : 0;
+        if (ia !== ib) {
+          return ia - ib;
+        }
         const la = Number(a.location?.line ?? Number.POSITIVE_INFINITY);
         const lb = Number(b.location?.line ?? Number.POSITIVE_INFINITY);
         if (la !== lb) {
@@ -822,6 +830,8 @@ function normalizeEntrypoint(ep, workspaceRoot) {
     label: ep.label,
     contract: ep.contract,
     tooltip: ep.tooltip,
+    inherited: !!ep.inherited,
+    inheritedFrom: ep.inheritedFrom || null,
     location: normalizeLocation(ep.location, workspaceRoot),
     calls: (ep.calls || []).map((c, idx) => normalizeCall(c, workspaceRoot, idx + 1)),
   };

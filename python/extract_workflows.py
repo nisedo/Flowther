@@ -78,12 +78,14 @@ def _is_dependency(obj: Any) -> bool:
 
 
 def _as_label_for_function(func: Any) -> str:
-    full = getattr(func, "full_name", None)
-    if isinstance(full, str) and full:
-        return full
+    # Use just the function name without parameters for cleaner display
     name = getattr(func, "name", None)
     if isinstance(name, str) and name:
         return name
+    full = getattr(func, "full_name", None)
+    if isinstance(full, str) and full:
+        # Strip parameters if present
+        return full.split("(")[0]
     return "<unknown>"
 
 
@@ -135,16 +137,39 @@ def _resolve_to_implementation(func: Any, exclude_dependencies: bool) -> Any:
             return func
 
         decl = getattr(func, "contract_declarer", None)
-        declared_in_iface_or_abstract = bool(
-            getattr(decl, "is_interface", False) or getattr(decl, "is_abstract", False)
-        )
+        declared_in_iface = bool(getattr(decl, "is_interface", False))
+        declared_in_abstract = bool(getattr(decl, "is_abstract", False))
         is_implemented = bool(getattr(func, "is_implemented", True))
 
-        if is_implemented and not declared_in_iface_or_abstract:
+        if is_implemented and not declared_in_iface and not declared_in_abstract:
             return func
 
+        # Collect potential implementations
+        impls: List[Any] = []
+
+        # Method 1: Use overridden_by relationship
         overrides = _collect_overriding_functions(func)
-        impls = [f for f in overrides if bool(getattr(f, "is_implemented", False))]
+        impls.extend([f for f in overrides if bool(getattr(f, "is_implemented", False))])
+
+        # Method 2: For interface functions, search for implementations in contracts that inherit the interface
+        if declared_in_iface and decl is not None:
+            func_name = getattr(func, "name", None)
+            func_full_name = getattr(func, "full_name", None)
+            # Get contracts that inherit this interface
+            derived = getattr(decl, "derived_contracts", []) or []
+            for derived_contract in derived:
+                if getattr(derived_contract, "is_interface", False):
+                    continue
+                # Look for a function with the same name/signature in the derived contract
+                for f in getattr(derived_contract, "functions", []) or []:
+                    if not bool(getattr(f, "is_implemented", False)):
+                        continue
+                    f_name = getattr(f, "name", None)
+                    f_full_name = getattr(f, "full_name", None)
+                    if f_full_name == func_full_name or (f_name == func_name and f_full_name is None):
+                        if f not in impls:
+                            impls.append(f)
+
         if not impls:
             return func
 
@@ -174,6 +199,10 @@ def _resolve_to_implementation(func: Any, exclude_dependencies: bool) -> Any:
         return func
 
 
+# Solidity built-in statements to filter out (not meaningful function calls)
+_SOLIDITY_STATEMENTS = {"require", "assert", "revert"}
+
+
 def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
     """
     Return list of (kindLabel, target, callsite_obj) where target is either:
@@ -186,6 +215,7 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
     navigate to the callsite when there is no implementation location.
     """
     targets: List[Tuple[str, Any, Optional[Any]]] = []
+    seen_base_ctors: Set[str] = set()  # Track base constructors to avoid duplicates
 
     # Modifiers (and base constructor calls modeled as modifiers).
     # These execute before the function body, so we surface them first.
@@ -195,7 +225,10 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
         # For constructors, Slither can model base constructor calls as Contract modifiers.
         base_ctor = getattr(mod, "constructors_declared", None)
         if base_ctor is not None:
-            targets.append(("BaseConstructor", base_ctor, None))
+            ctor_id = getattr(base_ctor, "canonical_name", None) or str(id(base_ctor))
+            if ctor_id not in seen_base_ctors:
+                seen_base_ctors.add(ctor_id)
+                targets.append(("BaseConstructor", base_ctor, None))
             continue
         targets.append(("Modifier", mod, None))
 
@@ -203,7 +236,10 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
     for base_ctor in getattr(func, "explicit_base_constructor_calls", []) or []:
         if base_ctor is None:
             continue
-        targets.append(("BaseConstructor", base_ctor, None))
+        ctor_id = getattr(base_ctor, "canonical_name", None) or str(id(base_ctor))
+        if ctor_id not in seen_base_ctors:
+            seen_base_ctors.add(ctor_id)
+            targets.append(("BaseConstructor", base_ctor, None))
 
     # Calls inside the function body, in source order (best effort).
     try:
@@ -239,6 +275,13 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
                 target_name = getattr(target, "name", None)
                 if isinstance(target_name, str) and target_name.startswith("revert "):
                     continue
+
+                # Skip Solidity built-in statements (require, assert, revert) - they're control flow, not function calls
+                if isinstance(target_name, str):
+                    # Handle both "require" and "require(bool,string)" formats
+                    base_name = target_name.split("(")[0]
+                    if base_name in _SOLIDITY_STATEMENTS:
+                        continue
 
                 if ir_type == "LibraryCall":
                     kind_label = "Library"
@@ -440,6 +483,49 @@ def main() -> int:
         with contextlib.redirect_stdout(sys.stderr):
             sl = Slither(args.target, **slither_kwargs)
 
+        # Collect all contracts
+        all_contracts: List[Any] = []
+        for cu in getattr(sl, "compilation_units", []) or []:
+            all_contracts.extend(getattr(cu, "contracts", []) or [])
+
+        # Separate abstract and concrete contracts
+        abstract_contracts: Set[str] = set()
+        concrete_contracts: List[Any] = []
+        for c in all_contracts:
+            if exclude_dependencies and _is_dependency(c):
+                continue
+            c_name = getattr(c, "name", "")
+            if getattr(c, "is_abstract", False):
+                abstract_contracts.add(c_name)
+            elif not getattr(c, "is_interface", False):
+                concrete_contracts.append(c)
+
+        # Build map of concrete contract -> inherited abstract functions
+        # Each entry: (function, origin_contract_name)
+        def get_inherited_abstract_functions(contract: Any) -> List[Tuple[Any, str]]:
+            result: List[Tuple[Any, str]] = []
+            inheritance = getattr(contract, "inheritance", []) or []
+            for parent in inheritance:
+                parent_name = getattr(parent, "name", "")
+                if parent_name not in abstract_contracts:
+                    continue
+                for f in getattr(parent, "functions", []) or []:
+                    if not isinstance(f, FunctionContract):
+                        continue
+                    if not _is_state_changing_entrypoint(f):
+                        continue
+                    # Check if this function is overridden in the concrete contract
+                    f_name = getattr(f, "full_name", "") or getattr(f, "name", "")
+                    is_overridden = False
+                    for own_f in getattr(contract, "functions_declared", []) or []:
+                        own_f_name = getattr(own_f, "full_name", "") or getattr(own_f, "name", "")
+                        if own_f_name == f_name:
+                            is_overridden = True
+                            break
+                    if not is_overridden:
+                        result.append((f, parent_name))
+            return result
+
         all_functions: List[Any] = []
         for cu in getattr(sl, "compilation_units", []) or []:
             all_functions.extend(getattr(cu, "functions", []) or [])
@@ -450,36 +536,72 @@ def main() -> int:
             if isinstance(canonical, str) and canonical and canonical not in by_canonical:
                 by_canonical[canonical] = f
 
-        entrypoints: List[Any] = []
+        # Collect entrypoints, excluding those from abstract contracts
+        entrypoints: List[Tuple[Any, Optional[str], Optional[Any]]] = []  # (func, origin_contract, concrete_contract)
         for f in by_canonical.values():
             if not isinstance(f, FunctionContract):
                 continue
             if exclude_dependencies and _is_dependency(f):
                 continue
             if _is_state_changing_entrypoint(f):
-                entrypoints.append(f)
+                contract_name = _contract_name(f) or ""
+                # Skip functions declared in abstract contracts
+                if contract_name in abstract_contracts:
+                    continue
+                entrypoints.append((f, None, None))
+
+        # Add inherited abstract functions to concrete contracts
+        for concrete in concrete_contracts:
+            inherited = get_inherited_abstract_functions(concrete)
+            for func, origin_name in inherited:
+                if exclude_dependencies and _is_dependency(func):
+                    continue
+                entrypoints.append((func, origin_name, concrete))
 
         files: Dict[str, List[Dict[str, Any]]] = {}
 
-        for f in entrypoints:
-            loc = _location_from_source_mapping(f, workspace_root)
-            if loc is None:
-                continue
-            file_rel = loc.file
+        for f, origin_contract, concrete_contract in entrypoints:
+            # For inherited functions, use concrete contract's location
+            if concrete_contract is not None:
+                concrete_loc = _location_from_source_mapping(concrete_contract, workspace_root)
+                if concrete_loc is None:
+                    continue
+                file_rel = concrete_loc.file
+                contract = getattr(concrete_contract, "name", "") or ""
+            else:
+                loc = _location_from_source_mapping(f, workspace_root)
+                if loc is None:
+                    continue
+                file_rel = loc.file
+                contract = _contract_name(f) or ""
 
-            contract = _contract_name(f) or ""
             canonical = getattr(f, "canonical_name", "")
-            label = _as_label_for_function(f)
-            flow_id = f"{file_rel}::{canonical}"
+            base_label = _as_label_for_function(f)
+
+            # Add origin indicator for inherited functions
+            if origin_contract:
+                label = base_label
+                inherited_from = origin_contract
+                # Create unique flow_id for inherited function in this concrete contract
+                flow_id = f"{file_rel}::{contract}.{base_label}::from::{origin_contract}"
+            else:
+                label = base_label
+                inherited_from = None
+                flow_id = f"{file_rel}::{canonical}"
 
             tooltip = f"{canonical} • {file_rel}" if canonical else f"{label} • {file_rel}"
+
+            # Use function's actual location for jumping
+            func_loc = _location_from_source_mapping(f, workspace_root)
 
             ep_obj: Dict[str, Any] = {
                 "flowId": flow_id,
                 "label": label,
                 "contract": contract,
                 "tooltip": tooltip,
-                "location": loc.__dict__,
+                "inherited": bool(origin_contract),
+                "inheritedFrom": inherited_from,
+                "location": func_loc.__dict__ if func_loc else {"file": file_rel, "line": 0, "character": 0},
                 "calls": _serialize_call_tree(
                     f,
                     workspace_root=workspace_root,
@@ -487,22 +609,25 @@ def main() -> int:
                     exclude_dependencies=exclude_dependencies,
                     expand_dependencies=expand_dependencies,
                     depth=0,
-                    ancestors=set([canonical]) if canonical else set([label]),
+                    ancestors=set([canonical]) if canonical else set([base_label]),
                 ),
             }
 
             files.setdefault(file_rel, []).append(ep_obj)
 
+        def _ep_key(e: Dict[str, Any]) -> Tuple[int, int, str]:
+            # Sort by: (inherited, line, label)
+            # inherited=False (0) comes before inherited=True (1)
+            inherited = 1 if e.get("inherited", False) else 0
+            try:
+                loc = e.get("location") or {}
+                line = int(loc.get("line", 10**9))
+            except Exception:
+                line = 10**9
+            return (inherited, line, str(e.get("label", "")))
+
         out_files = []
         for file_path, eps in files.items():
-            def _ep_key(e: Dict[str, Any]) -> Tuple[int, str]:
-                try:
-                    loc = e.get("location") or {}
-                    line = int(loc.get("line", 10**9))
-                except Exception:
-                    line = 10**9
-                return (line, str(e.get("label", "")))
-
             eps.sort(key=_ep_key)
             out_files.append({"path": file_path, "entrypoints": eps})
         out_files.sort(key=lambda f: f.get("path", ""))
