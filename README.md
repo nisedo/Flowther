@@ -6,6 +6,12 @@
 
 Flowther shows **state-changing entry points** in a Solidity workspace and renders their **call graphs** as an interactive tree.
 
+## Screenshots
+
+**Default panel view**
+
+<img src="media/screenshot-1.png" alt="Default panel view" width="300">
+
 ## Features
 
 - Groups workflows by **file**
@@ -20,28 +26,9 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Right click a file to **Hide File** or **Unhide All Flows In File**
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
 
-## Icon Legend
+**Show Only This Flow (focus mode)**
 
-### Entry Points
-
-| Icon | Meaning |
-|------|---------|
-| ▶️ | Public/external state-changing function |
-| 🔧 | Constructor |
-| ⚡ | Receive function |
-| 🔀 | Fallback function |
-
-### Call Nodes
-
-| Icon | Badge | Meaning |
-|------|-------|---------|
-| 📦 | `INT` | Internal function call |
-| 🔗 | `EXT` | External call (cross-contract) |
-| 📚 | `LIB` | Library function call |
-| ƒ | `SOL` | Solidity builtin (e.g. `keccak256`, `abi.encode`) |
-| 🛡️ | `MOD` | Modifier |
-| 🔧 | `BASE` | Base constructor call |
-| ⚠️ | - | Recursive/cyclic call detected |
+<img src="media/screenshot-2.png" alt="Isolated flow" width="300">
 
 ## Requirements
 
@@ -50,6 +37,12 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
   - [uv](https://docs.astral.sh/uv/) installed (Flowther will use `uvx --from slither-analyzer` automatically)
   - [pipx](https://pipx.pypa.io/) installed (Flowther will use `pipx run --spec slither-analyzer` automatically)
 - A working Solidity build setup (e.g. Foundry/Hardhat/Truffle/Brownie) or `solc` for single-file analysis
+
+## Usage
+
+1. Open a Solidity workspace in VSCode
+2. Open the **Flowther** activity bar icon → **Workflows**
+3. Run **"Flowther: Refresh Workflows"** (command palette) if it doesn't auto-load
 
 ## Settings
 
@@ -63,12 +56,6 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - `flowther.expandDependencies`: expand call graphs into dependency-defined functions (default `true`)
 - `flowther.showCallOrderNumbers`: prefix call nodes with execution order (default `true`)
 - `flowther.maxCallDepth`: call graph depth cap (default `10`)
-
-## Usage
-
-1. Open a Solidity workspace in VSCode
-2. Open the **Flowther** activity bar icon → **Workflows**
-3. Run **“Flowther: Refresh Workflows”** (command palette) if it doesn't auto-load
 
 ## Troubleshooting
 
