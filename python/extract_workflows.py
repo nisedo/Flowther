@@ -57,10 +57,22 @@ def _location_from_source_mapping(obj: Any, workspace_root: str) -> Optional[Loc
         return None
 
 
+# Directories to exclude from entry point listing
+_EXCLUDED_DIRS = {"lib", "dependencies", "test", "tests", "script", "scripts", "node_modules"}
+
+
 def _is_dependency(obj: Any) -> bool:
     try:
         src = getattr(obj, "source_mapping", None)
-        return bool(getattr(src, "is_dependency", False))
+        if bool(getattr(src, "is_dependency", False)):
+            return True
+        # Also check if file path contains excluded directories
+        filename = getattr(src.filename, "relative", None) or getattr(src.filename, "absolute", None)
+        if isinstance(filename, str) and filename:
+            parts = filename.replace("\\", "/").split("/")
+            if any(part in _EXCLUDED_DIRS for part in parts):
+                return True
+        return False
     except Exception:
         return False
 

@@ -13,6 +13,7 @@
     "url": "https://github.com/nisedo/Flowther/issues"
   },
   "homepage": "https://github.com/nisedo/Flowther#readme",
+  "icon": "media/flowther.png",
   "engines": {
     "vscode": "^1.85.0"
   },

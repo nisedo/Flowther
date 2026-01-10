@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/flowther.png" alt="Flowther Logo" width="128" height="128">
+</p>
+
 # Flowther (VSCode extension)
 
 Flowther shows **state-changing entry points** in a Solidity workspace and renders their **call graphs** as an interactive tree.
