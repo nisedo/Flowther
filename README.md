@@ -44,8 +44,10 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 
 ## Requirements
 
-- Python 3
-- Slither + its python dependencies available to that python interpreter
+- **Slither** - one of:
+  - Slither installed in your Python environment (`pip install slither-analyzer`)
+  - [uv](https://docs.astral.sh/uv/) installed (Flowther will use `uvx --from slither-analyzer` automatically)
+  - [pipx](https://pipx.pypa.io/) installed (Flowther will use `pipx run --spec slither-analyzer` automatically)
 - A working Solidity build setup (e.g. Foundry/Hardhat/Truffle/Brownie) or `solc` for single-file analysis
 
 ## Settings

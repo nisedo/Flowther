@@ -305,14 +305,14 @@ class WorkflowsProvider {
         targetPathSetting,
       });
       const analysisCwd = resolveAnalysisCwd(analysisTarget);
-      const pythonPath = await resolvePythonPathForSlither({
+      const pythonRunner = await resolvePythonPathForSlither({
         workspaceRoot: workspace.uri.fsPath,
         pythonPathSetting,
         slitherRepoPath,
       });
 
       const raw = await runExtractor(
-        pythonPath,
+        pythonRunner,
         extractor,
         analysisTarget,
         workspace.uri.fsPath,
@@ -639,18 +639,56 @@ async function resolvePythonPathForSlither({ workspaceRoot, pythonPathSetting, s
     // eslint-disable-next-line no-await-in-loop
     const ok = await canImportSlither(candidate, { workspaceRoot, slitherRepoPath });
     if (ok) {
-      return candidate;
+      return { cmd: candidate, args: [] };
     }
+  }
+
+  // Try uvx (uv tool) as fallback
+  const uvxOk = await canRunSlitherViaUvx(workspaceRoot);
+  if (uvxOk) {
+    return { cmd: "uvx", args: ["--from", "slither-analyzer", "python"] };
+  }
+
+  // Try pipx as fallback
+  const pipxOk = await canRunSlitherViaPipx(workspaceRoot);
+  if (pipxOk) {
+    return { cmd: "pipx", args: ["run", "--spec", "slither-analyzer", "python"] };
   }
 
   // Best-effort fallback (will surface the extractor error)
   if (pythonPathSetting) {
-    return pythonPathSetting;
+    return { cmd: pythonPathSetting, args: [] };
   }
   if (slitherPython) {
-    return slitherPython;
+    return { cmd: slitherPython, args: [] };
   }
-  return "python3";
+  return { cmd: "python3", args: [] };
+}
+
+async function canRunSlitherViaUvx(workspaceRoot) {
+  try {
+    await execFileAsync("uvx", ["--from", "slither-analyzer", "python", "-c", "import slither; print('OK')"], {
+      cwd: workspaceRoot,
+      timeout: 30000,
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function canRunSlitherViaPipx(workspaceRoot) {
+  try {
+    await execFileAsync("pipx", ["run", "--spec", "slither-analyzer", "python", "-c", "import slither; print('OK')"], {
+      cwd: workspaceRoot,
+      timeout: 30000,
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 async function canImportSlither(pythonPath, { workspaceRoot, slitherRepoPath }) {
@@ -818,7 +856,7 @@ function normalizeLocation(location, workspaceRoot) {
 }
 
 function runExtractor(
-  pythonPath,
+  pythonRunner,
   scriptPath,
   analysisTarget,
   workspaceRoot,
@@ -828,7 +866,7 @@ function runExtractor(
 ) {
   const spawnOnce = (token) =>
     new Promise((resolve, reject) => {
-        const args = [
+        const scriptArgs = [
           scriptPath,
           "--target",
           analysisTarget,
@@ -843,19 +881,23 @@ function runExtractor(
         ];
 
         if (options.slitherRepoPath) {
-          args.push("--slither-repo", options.slitherRepoPath);
+          scriptArgs.push("--slither-repo", options.slitherRepoPath);
         }
         if (options.solcPath) {
-          args.push("--solc", options.solcPath);
+          scriptArgs.push("--solc", options.solcPath);
         }
         if (options.solcArgs) {
-          args.push("--solc-args", options.solcArgs);
+          scriptArgs.push("--solc-args", options.solcArgs);
         }
         for (const p of options.filterPaths || []) {
-          args.push("--filter-path", p);
+          scriptArgs.push("--filter-path", p);
         }
 
-        const proc = cp.spawn(pythonPath, args, {
+        // pythonRunner is {cmd, args} where args are prepended to scriptArgs
+        const cmd = pythonRunner.cmd;
+        const args = [...(pythonRunner.args || []), ...scriptArgs];
+
+        const proc = cp.spawn(cmd, args, {
           cwd: analysisCwd || workspaceRoot,
           env: {
             ...process.env,
