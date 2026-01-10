@@ -80,30 +80,42 @@ async function openLocation(location) {
   if (!location || !location.file) {
     return;
   }
-  const uri = vscode.Uri.file(location.file);
-  const doc = await vscode.workspace.openTextDocument(uri);
-  const editor = await vscode.window.showTextDocument(doc, { preview: true });
-  const pos = new vscode.Position(location.line ?? 0, location.character ?? 0);
-  editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos));
+  try {
+    const uri = vscode.Uri.file(location.file);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc, { preview: true });
 
-  if (jumpHighlightDecoration) {
-    const seq = ++jumpHighlightSeq;
-    const range = editor.document.lineAt(pos.line).range;
-    editor.setDecorations(jumpHighlightDecoration, [range]);
-    if (jumpHighlightTimeout) {
-      clearTimeout(jumpHighlightTimeout);
+    const rawLine = Number(location.line ?? 0);
+    const rawCharacter = Number(location.character ?? 0);
+    const line0 = Number.isFinite(rawLine) ? Math.max(0, Math.trunc(rawLine)) : 0;
+    const character0 = Number.isFinite(rawCharacter) ? Math.max(0, Math.trunc(rawCharacter)) : 0;
+    const line = Math.min(line0, Math.max(0, doc.lineCount - 1));
+
+    const pos = new vscode.Position(line, character0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+
+    if (jumpHighlightDecoration) {
+      const seq = ++jumpHighlightSeq;
+      const range = editor.document.lineAt(pos.line).range;
+      editor.setDecorations(jumpHighlightDecoration, [range]);
+      if (jumpHighlightTimeout) {
+        clearTimeout(jumpHighlightTimeout);
+      }
+      jumpHighlightTimeout = setTimeout(() => {
+        if (seq !== jumpHighlightSeq) {
+          return;
+        }
+        try {
+          editor.setDecorations(jumpHighlightDecoration, []);
+        } catch (e) {
+          // ignore
+        }
+      }, 500);
     }
-    jumpHighlightTimeout = setTimeout(() => {
-      if (seq !== jumpHighlightSeq) {
-        return;
-      }
-      try {
-        editor.setDecorations(jumpHighlightDecoration, []);
-      } catch (e) {
-        // ignore
-      }
-    }, 500);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    vscode.window.showErrorMessage(`Flowther: Failed to open location. ${msg}`);
   }
 }
 
@@ -578,7 +590,6 @@ async function resolveSlitherTarget({ workspaceRoot, targetPathSetting }) {
   const base = vscode.Uri.file(workspaceRoot);
   const hits = [];
   for (const glob of patterns) {
-    // eslint-disable-next-line no-await-in-loop
     const found = await vscode.workspace.findFiles(
       new vscode.RelativePattern(base, glob),
       "**/{node_modules,.git}/**",
@@ -644,7 +655,6 @@ async function resolvePythonPathForSlither({ workspaceRoot, pythonPathSetting, s
   const unique = Array.from(new Set(candidates.filter(Boolean)));
 
   for (const candidate of unique) {
-    // eslint-disable-next-line no-await-in-loop
     const ok = await canImportSlither(candidate, { workspaceRoot, slitherRepoPath });
     if (ok) {
       return { cmd: candidate, args: [] };
@@ -701,15 +711,19 @@ async function canRunSlitherViaPipx(workspaceRoot) {
 
 async function canImportSlither(pythonPath, { workspaceRoot, slitherRepoPath }) {
   const repo = String(slitherRepoPath || "").trim();
+  const env = { ...process.env, PYTHONUNBUFFERED: "1" };
   const code = repo
-    ? `import sys; sys.path.insert(0, r"""${repo}"""); import slither; print("OK")`
+    ? `import os, sys; sys.path.insert(0, os.environ["FLOWTHER_SLITHER_REPO"]); import slither; print("OK")`
     : `import slither; print("OK")`;
+  if (repo) {
+    env.FLOWTHER_SLITHER_REPO = repo;
+  }
 
   try {
     await execFileAsync(pythonPath, ["-c", code], {
       cwd: workspaceRoot,
       timeout: 5000,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      env,
     });
     return true;
   } catch (e) {
@@ -865,6 +879,39 @@ function normalizeLocation(location, workspaceRoot) {
   };
 }
 
+function buildExtractorArgs(scriptPath, analysisTarget, workspaceRoot, options) {
+  const scriptArgs = [
+    scriptPath,
+    "--target",
+    analysisTarget,
+    "--workspace-root",
+    workspaceRoot,
+    "--exclude-dependencies",
+    String(!!options.excludeDependencies),
+    "--expand-dependencies",
+    String(!!options.expandDependencies),
+    "--max-depth",
+    String(options.maxCallDepth),
+  ];
+
+  if (options.slitherRepoPath) {
+    scriptArgs.push("--slither-repo", options.slitherRepoPath);
+  }
+  if (options.solcPath) {
+    scriptArgs.push("--solc", options.solcPath);
+  }
+  if (options.solcArgs) {
+    scriptArgs.push("--solc-args", options.solcArgs);
+  }
+  for (const p of options.filterPaths || []) {
+    if (typeof p === "string" && p) {
+      scriptArgs.push("--filter-path", p);
+    }
+  }
+
+  return scriptArgs;
+}
+
 function runExtractor(
   pythonRunner,
   scriptPath,
@@ -876,89 +923,62 @@ function runExtractor(
 ) {
   const spawnOnce = (token) =>
     new Promise((resolve, reject) => {
-        const scriptArgs = [
-          scriptPath,
-          "--target",
-          analysisTarget,
-          "--workspace-root",
-          workspaceRoot,
-          "--exclude-dependencies",
-          String(!!options.excludeDependencies),
-          "--expand-dependencies",
-          String(!!options.expandDependencies),
-          "--max-depth",
-          String(options.maxCallDepth),
-        ];
+      const scriptArgs = buildExtractorArgs(scriptPath, analysisTarget, workspaceRoot, options);
 
-        if (options.slitherRepoPath) {
-          scriptArgs.push("--slither-repo", options.slitherRepoPath);
-        }
-        if (options.solcPath) {
-          scriptArgs.push("--solc", options.solcPath);
-        }
-        if (options.solcArgs) {
-          scriptArgs.push("--solc-args", options.solcArgs);
-        }
-        for (const p of options.filterPaths || []) {
-          scriptArgs.push("--filter-path", p);
-        }
+      // pythonRunner is {cmd, args} where args are prepended to scriptArgs
+      const cmd = pythonRunner.cmd;
+      const args = [...(pythonRunner.args || []), ...scriptArgs];
 
-        // pythonRunner is {cmd, args} where args are prepended to scriptArgs
-        const cmd = pythonRunner.cmd;
-        const args = [...(pythonRunner.args || []), ...scriptArgs];
-
-        const proc = cp.spawn(cmd, args, {
-          cwd: analysisCwd || workspaceRoot,
-          env: {
-            ...process.env,
-            PYTHONUNBUFFERED: "1",
-          },
-        });
-
-        let stdout = "";
-        let stderr = "";
-
-        const disposeCancel =
-          token && typeof token.onCancellationRequested === "function"
-            ? token.onCancellationRequested(() => {
-                try {
-                  proc.kill();
-                } catch (e) {
-                  // ignore
-                }
-              })
-            : { dispose: () => {} };
-
-        proc.stdout.on("data", (d) => {
-          stdout += d.toString();
-        });
-        proc.stderr.on("data", (d) => {
-          stderr += d.toString();
-        });
-
-        proc.on("error", (err) => {
-          disposeCancel.dispose();
-          reject(err);
-        });
-
-        proc.on("close", (code) => {
-          disposeCancel.dispose();
-          try {
-            const parsed = JSON.parse(stdout);
-            resolve(parsed);
-          } catch (e) {
-            if (code !== 0) {
-              reject(new Error(stderr.trim() || `Extractor exited with code ${code}`));
-            } else {
-              reject(
-                new Error(
-                  `Failed to parse extractor output as JSON. stderr: ${stderr.trim()}`
-                )
-              );
-            }
-          }
-        });
+      const proc = cp.spawn(cmd, args, {
+        cwd: analysisCwd || workspaceRoot,
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: "1",
+        },
       });
+
+      let stdout = "";
+      let stderr = "";
+
+      const disposeCancel =
+        token && typeof token.onCancellationRequested === "function"
+          ? token.onCancellationRequested(() => {
+              try {
+                proc.kill();
+              } catch (e) {
+                // ignore
+              }
+            })
+          : { dispose: () => {} };
+
+      proc.stdout.on("data", (d) => {
+        stdout += d.toString();
+      });
+      proc.stderr.on("data", (d) => {
+        stderr += d.toString();
+      });
+
+      proc.on("error", (err) => {
+        disposeCancel.dispose();
+        reject(err);
+      });
+
+      proc.on("close", (code) => {
+        disposeCancel.dispose();
+        try {
+          const parsed = JSON.parse(stdout);
+          resolve(parsed);
+        } catch (e) {
+          if (code !== 0) {
+            reject(new Error(stderr.trim() || `Extractor exited with code ${code}`));
+          } else {
+            reject(
+              new Error(`Failed to parse extractor output as JSON. stderr: ${stderr.trim()}`)
+            );
+          }
+        }
+      });
+    });
 
   if (progressOptions?.silent) {
     return spawnOnce(undefined);
