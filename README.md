@@ -30,10 +30,16 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 
 <img src="media/screenshot-2.png" alt="Isolated flow" width="300">
 
+## Installation
+
+```bash
+git clone https://github.com/nisedo/Flowther.git && cd Flowther && npx @vscode/vsce package && code --install-extension flowther-*.vsix
+```
+
 ## Requirements
 
 - **Slither** - one of:
-  - Slither installed in your Python environment (`pip install slither-analyzer`)
+  - Slither installed in your Python environment (`uv pip install slither-analyzer`)
   - [uv](https://docs.astral.sh/uv/) installed (Flowther will use `uvx --from slither-analyzer` automatically)
   - [pipx](https://pipx.pypa.io/) installed (Flowther will use `pipx run --spec slither-analyzer` automatically)
 - A working Solidity build setup (e.g. Foundry/Hardhat/Truffle/Brownie) or `solc` for single-file analysis

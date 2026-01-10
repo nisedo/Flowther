@@ -58,7 +58,7 @@ def _location_from_source_mapping(obj: Any, workspace_root: str) -> Optional[Loc
 
 
 # Directories to exclude from entry point listing
-_EXCLUDED_DIRS = {"lib", "dependencies", "test", "tests", "script", "scripts", "node_modules"}
+_EXCLUDED_DIRS = {"lib", "dependencies", "test", "tests", "script", "scripts", "node_modules", "mock", "mocks"}
 
 
 def _is_dependency(obj: Any) -> bool:
