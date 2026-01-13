@@ -47,7 +47,7 @@ git clone https://github.com/nisedo/Flowther.git && cd Flowther && npx @vscode/v
   - Slither installed in your Python environment (`uv pip install slither-analyzer`)
   - [uv](https://docs.astral.sh/uv/) installed (Flowther will use `uvx --from slither-analyzer` automatically)
   - [pipx](https://pipx.pypa.io/) installed (Flowther will use `pipx run --spec slither-analyzer` automatically)
-- A working Solidity build setup (e.g. Foundry/Hardhat/Truffle/Brownie) or `solc` for single-file analysis
+- A working Solidity build setup (e.g. Foundry/Hardhat) or `solc` for single-file analysis
 
 ## Usage
 
