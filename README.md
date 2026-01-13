@@ -8,7 +8,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 
 ## Screenshots
 
-**Default panel view**
+**Default panel view** (All entry-points listed per contract)
 
 <img src="media/screenshot-1.png" alt="Default panel view" width="300">
 
@@ -30,6 +30,10 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 **Show Only This Flow (focus mode)**
 
 <img src="media/screenshot-2.png" alt="Isolated flow" width="300">
+
+**Variables panel** (All state variables and their modifying entry points listed per contract)
+
+<img src="media/screenshot-3.png" alt="Variables panel" width="300">
 
 ## Installation
 
