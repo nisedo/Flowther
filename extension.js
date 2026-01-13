@@ -3,9 +3,11 @@ const fs = require("fs");
 const vscode = require("vscode");
 const cp = require("child_process");
 
-const VIEW_ID = "flowther.workflows";
+const WORKFLOWS_VIEW_ID = "flowther.workflows";
+const VARIABLES_VIEW_ID = "flowther.variables";
 const HIDDEN_FLOWS_KEY = "flowther.hiddenFlows";
 const HIDDEN_FILES_KEY = "flowther.hiddenFiles";
+const HIDDEN_VARS_KEY = "flowther.hiddenVars";
 
 let jumpHighlightDecoration;
 let jumpHighlightTimeout;
@@ -21,17 +23,28 @@ function activate(context) {
   });
   context.subscriptions.push(jumpHighlightDecoration);
 
-  const provider = new WorkflowsProvider(context);
+  const workflowsProvider = new WorkflowsProvider(context);
+  const variablesProvider = new VariablesProvider(context);
+
+  // Link providers for shared refresh
+  workflowsProvider._variablesProvider = variablesProvider;
 
   context.subscriptions.push(
-    vscode.window.createTreeView(VIEW_ID, {
-      treeDataProvider: provider,
+    vscode.window.createTreeView(WORKFLOWS_VIEW_ID, {
+      treeDataProvider: workflowsProvider,
       showCollapseAll: true,
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.refreshWorkflows", () => provider.refresh())
+    vscode.window.createTreeView(VARIABLES_VIEW_ID, {
+      treeDataProvider: variablesProvider,
+      showCollapseAll: true,
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("flowther.refreshWorkflows", () => workflowsProvider.refresh())
   );
 
   context.subscriptions.push(
@@ -41,37 +54,37 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.hideFlow", (node) => provider.hideFlow(node))
+    vscode.commands.registerCommand("flowther.hideFlow", (node) => workflowsProvider.hideFlow(node))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.focusFlow", (node) => provider.focusFlow(node))
+    vscode.commands.registerCommand("flowther.focusFlow", (node) => workflowsProvider.focusFlow(node))
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.clearFocus", () => provider.clearFocus())
+    vscode.commands.registerCommand("flowther.clearFocus", () => workflowsProvider.clearFocus())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.hideFile", (node) => provider.hideFile(node))
+    vscode.commands.registerCommand("flowther.hideFile", (node) => workflowsProvider.hideFile(node))
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("flowther.unhideFlowsInFile", (node) =>
-      provider.unhideFlowsInFile(node)
+      workflowsProvider.unhideFlowsInFile(node)
     )
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.unhideAllFlows", () => provider.unhideAllFlows())
+    vscode.commands.registerCommand("flowther.unhideAllFlows", () => workflowsProvider.unhideAllFlows())
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.unhideAllFiles", () => provider.unhideAllFiles())
+    vscode.commands.registerCommand("flowther.unhideAllFiles", () => workflowsProvider.unhideAllFiles())
   );
 
   // Initial load (best-effort, non-blocking)
-  provider.refresh({ silent: true });
+  workflowsProvider.refresh({ silent: true });
 }
 
 function deactivate() {}
@@ -357,6 +370,11 @@ class WorkflowsProvider {
       this._workspaceRoot = workspace.uri.fsPath;
       this._rebuildFiles();
 
+      // Share analysis with variables provider
+      if (this._variablesProvider) {
+        this._variablesProvider.setAnalysis(raw, workspace.uri.fsPath);
+      }
+
       this._loading = false;
       this._lastError = null;
       this._onDidChangeTreeData.fire();
@@ -364,6 +382,10 @@ class WorkflowsProvider {
       this._files = [];
       this._loading = false;
       this._lastError = e instanceof Error ? e.message : String(e);
+      // Notify variables provider of error
+      if (this._variablesProvider) {
+        this._variablesProvider.setError(this._lastError);
+      }
       this._onDidChangeTreeData.fire();
     }
   }
@@ -482,6 +504,172 @@ class WorkflowsProvider {
         return String(a.label || "").localeCompare(String(b.label || ""));
       });
     }
+  }
+}
+
+class VariablesProvider {
+  constructor(context) {
+    this._context = context;
+    this._onDidChangeTreeData = new vscode.EventEmitter();
+    this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+    this._analysis = null;
+    this._workspaceRoot = null;
+    this._variables = [];
+    this._lastError = null;
+  }
+
+  setAnalysis(analysis, workspaceRoot) {
+    this._analysis = analysis;
+    this._workspaceRoot = workspaceRoot;
+    this._lastError = null;
+    this._rebuildVariables();
+    this._onDidChangeTreeData.fire();
+  }
+
+  setError(error) {
+    this._lastError = error;
+    this._variables = [];
+    this._onDidChangeTreeData.fire();
+  }
+
+  getTreeItem(element) {
+    if (element.kind === "message") {
+      const item = new vscode.TreeItem(
+        element.message,
+        vscode.TreeItemCollapsibleState.None
+      );
+      item.contextValue = "flowther.message";
+      return item;
+    }
+
+    if (element.kind === "varFile") {
+      const item = new vscode.TreeItem(
+        element.fileRel,
+        vscode.TreeItemCollapsibleState.Collapsed
+      );
+      item.contextValue = "flowther.varFile";
+      item.iconPath = new vscode.ThemeIcon("file-code");
+      item.description = element.contract;
+      item.tooltip = `${element.contract} - ${element.fileAbs}`;
+      return item;
+    }
+
+    if (element.kind === "variable") {
+      const item = new vscode.TreeItem(
+        element.name,
+        element.modifiers && element.modifiers.length
+          ? vscode.TreeItemCollapsibleState.Collapsed
+          : vscode.TreeItemCollapsibleState.None
+      );
+      item.contextValue = "flowther.variable";
+      item.iconPath = new vscode.ThemeIcon("symbol-variable");
+      // Show inherited indicator or type as description
+      item.description = element.inheritedFrom
+        ? `${element.type} • from ${element.inheritedFrom}`
+        : element.type;
+      item.tooltip = element.inheritedFrom
+        ? `${element.contract}.${element.name} (${element.type}) - inherited from ${element.inheritedFrom}`
+        : `${element.contract}.${element.name} (${element.type})`;
+      if (element.location?.file) {
+        item.command = {
+          command: "flowther.openFunction",
+          title: "Open Variable",
+          arguments: [element.location],
+        };
+      }
+      return item;
+    }
+
+    if (element.kind === "modifier") {
+      const item = new vscode.TreeItem(
+        element.label,
+        vscode.TreeItemCollapsibleState.None
+      );
+      item.contextValue = "flowther.modifier";
+      item.iconPath = new vscode.ThemeIcon("debug-start");
+      item.description = element.contract;
+      item.tooltip = `Entry point: ${element.contract}.${element.label}`;
+      if (element.location?.file) {
+        item.command = {
+          command: "flowther.openFunction",
+          title: "Open Entry Point",
+          arguments: [element.location],
+        };
+      }
+      return item;
+    }
+
+    const fallback = new vscode.TreeItem(
+      "Unknown item",
+      vscode.TreeItemCollapsibleState.None
+    );
+    return fallback;
+  }
+
+  getChildren(element) {
+    if (this._lastError) {
+      return [
+        { kind: "message", message: `Flowther error: ${this._lastError}` },
+        { kind: "message", message: 'Run "Flowther: Refresh Workflows" to retry.' },
+      ];
+    }
+
+    if (!this._variables.length) {
+      if (!this._analysis) {
+        return [{ kind: "message", message: 'No variables yet. Run "Flowther: Refresh Workflows".' }];
+      }
+      return [{ kind: "message", message: "No state variables with modifying entry points found." }];
+    }
+
+    if (!element) {
+      return this._variables;
+    }
+
+    if (element.kind === "varFile") {
+      return element.vars || [];
+    }
+
+    if (element.kind === "variable") {
+      return element.modifiers || [];
+    }
+
+    return [];
+  }
+
+  _rebuildVariables() {
+    const workspaceRoot = this._workspaceRoot;
+    if (!this._analysis || !workspaceRoot) {
+      this._variables = [];
+      return;
+    }
+
+    const rawVariables = this._analysis.variables || [];
+    this._variables = rawVariables.map((fileEntry) => ({
+      kind: "varFile",
+      fileRel: fileEntry.path,
+      fileAbs: path.isAbsolute(fileEntry.path) ? fileEntry.path : path.join(workspaceRoot, fileEntry.path),
+      contract: fileEntry.contract,
+      vars: (fileEntry.vars || []).map((v) => ({
+        kind: "variable",
+        varId: v.varId,
+        name: v.name,
+        type: v.type,
+        contract: v.contract,
+        inherited: !!v.inherited,
+        inheritedFrom: v.inheritedFrom || null,
+        location: normalizeLocation(v.location, workspaceRoot),
+        modifiers: (v.modifiers || []).map((m) => ({
+          kind: "modifier",
+          flowId: m.flowId,
+          label: m.label,
+          contract: m.contract,
+          location: normalizeLocation(m.location, workspaceRoot),
+        })),
+      })),
+    })).filter((f) => f.vars && f.vars.length > 0);
+
+    this._variables.sort((a, b) => a.fileRel.localeCompare(b.fileRel));
   }
 }
 

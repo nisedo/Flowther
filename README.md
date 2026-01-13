@@ -25,6 +25,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Right click an entry point to **Show Only This Flow** (focus mode)
 - Right click a file to **Hide File** or **Unhide All Flows In File**
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
+- **Variables panel**: shows state variables (excluding constants/immutables) and which entry points can modify them (directly or through internal calls); inherited variables show `from ContractName` indicator
 
 **Show Only This Flow (focus mode)**
 
@@ -47,7 +48,9 @@ git clone https://github.com/nisedo/Flowther.git && cd Flowther && npx @vscode/v
 ## Usage
 
 1. Open a Solidity workspace in VSCode
-2. Open the **Flowther** activity bar icon → **Workflows**
+2. Open the **Flowther** activity bar icon
+   - **Workflows**: entry points and their call trees
+   - **Variables**: state variables and entry points that modify them
 3. Run **"Flowther: Refresh Workflows"** (command palette) if it doesn't auto-load
 
 ## Settings

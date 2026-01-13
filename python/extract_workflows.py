@@ -7,7 +7,7 @@ import os
 import sys
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -199,8 +199,30 @@ def _resolve_to_implementation(func: Any, exclude_dependencies: bool) -> Any:
         return func
 
 
-# Solidity built-in statements to filter out (not meaningful function calls)
-_SOLIDITY_STATEMENTS = {"require", "assert", "revert"}
+# Solidity built-in statements/functions to filter out (not meaningful function calls)
+_SOLIDITY_BUILTINS = {
+    # Statements
+    "require", "assert", "revert", "return",
+    # ABI encoding/decoding
+    "abi.encode", "abi.encodePacked", "abi.encodeWithSelector",
+    "abi.encodeWithSignature", "abi.encodeCall", "abi.decode",
+    # Hashing
+    "keccak256", "sha256", "ripemd160",
+    # Byte/string concatenation
+    "bytes.concat", "string.concat",
+    # Cryptography
+    "ecrecover",
+    # Math
+    "addmod", "mulmod",
+    # Block
+    "blockhash",
+    # Transient storage (EIP-1153)
+    "tload", "tstore",
+    # Memory/calldata operations
+    "mload", "mstore", "calldataload",
+    # Other
+    "gasleft", "type",
+}
 
 
 def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
@@ -276,11 +298,11 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
                 if isinstance(target_name, str) and target_name.startswith("revert "):
                     continue
 
-                # Skip Solidity built-in statements (require, assert, revert) - they're control flow, not function calls
+                # Skip Solidity built-in statements/functions (require, abi.encode, keccak256, etc.)
                 if isinstance(target_name, str):
                     # Handle both "require" and "require(bool,string)" formats
                     base_name = target_name.split("(")[0]
-                    if base_name in _SOLIDITY_STATEMENTS:
+                    if base_name in _SOLIDITY_BUILTINS:
                         continue
 
                 if ir_type == "LibraryCall":
@@ -389,6 +411,185 @@ def _serialize_call_tree(
         children.append(node)
 
     return children
+
+
+def _is_entry_point(func: Any) -> bool:
+    """Check if a function is a public/external entry point (including view/pure)."""
+    try:
+        if not getattr(func, "is_implemented", False):
+            return False
+        if bool(getattr(func, "is_constructor_variables", False)):
+            return False
+        visibility = getattr(func, "visibility", None)
+        if (
+            bool(getattr(func, "is_constructor", False))
+            or bool(getattr(func, "is_fallback", False))
+            or bool(getattr(func, "is_receive", False))
+        ):
+            return True
+        return visibility in ("public", "external")
+    except Exception:
+        return False
+
+
+def _find_calling_entry_points(target_func: Any, contract: Any, visited: Optional[Set[str]] = None) -> Set[Any]:
+    """Find all entry points that can reach target_func through call chains."""
+    if visited is None:
+        visited = set()
+
+    target_canonical = getattr(target_func, "canonical_name", None) or str(id(target_func))
+    if target_canonical in visited:
+        return set()
+    visited.add(target_canonical)
+
+    entry_points: Set[Any] = set()
+
+    # If this function is an entry point itself, add it
+    if _is_entry_point(target_func):
+        entry_points.add(target_func)
+
+    # Find functions that call this one
+    try:
+        # Check all functions in the contract and its inheritance chain
+        all_funcs: List[Any] = list(getattr(contract, "functions", []) or [])
+
+        for caller in all_funcs:
+            # Check if caller calls target_func (via internal_calls)
+            internal_calls = getattr(caller, "internal_calls", []) or []
+            if target_func in internal_calls:
+                # Recursively find entry points that call this caller
+                entry_points.update(_find_calling_entry_points(caller, contract, visited))
+
+            # Also check modifiers_statements and other call patterns
+            calls_as_expr = getattr(caller, "calls_as_expressions", []) or []
+            for call_expr in calls_as_expr:
+                called = getattr(call_expr, "called", None)
+                if called is target_func:
+                    entry_points.update(_find_calling_entry_points(caller, contract, visited))
+    except Exception:
+        pass
+
+    return entry_points
+
+
+def _extract_variables(
+    slither_obj: Any,
+    workspace_root: str,
+    exclude_dependencies: bool,
+) -> List[Dict[str, Any]]:
+    """Extract state variables and their writing entry points."""
+    from slither.core.declarations import FunctionContract  # type: ignore
+
+    variables_by_file: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}  # file -> contract -> vars
+
+    for cu in getattr(slither_obj, "compilation_units", []) or []:
+        for contract in getattr(cu, "contracts", []) or []:
+            if exclude_dependencies and _is_dependency(contract):
+                continue
+            if getattr(contract, "is_interface", False):
+                continue
+
+            contract_name = getattr(contract, "name", "") or "<unknown>"
+            contract_loc = _location_from_source_mapping(contract, workspace_root)
+            if contract_loc is None:
+                continue
+            file_rel = contract_loc.file
+
+            # Get all state variables for this contract
+            state_vars = getattr(contract, "state_variables", []) or []
+
+            for state_var in state_vars:
+                # Skip constant and immutable variables (cannot be modified after deployment)
+                if getattr(state_var, "is_constant", False) or getattr(state_var, "is_immutable", False):
+                    continue
+
+                var_name = getattr(state_var, "name", "") or "<unknown>"
+                var_type = str(getattr(state_var, "type", "")) or "unknown"
+                var_loc = _location_from_source_mapping(state_var, workspace_root)
+
+                # Check if variable is inherited (declared in a different contract)
+                var_declaring_contract = getattr(state_var, "contract", None)
+                var_declaring_name = getattr(var_declaring_contract, "name", "") if var_declaring_contract else ""
+                is_inherited = var_declaring_name and var_declaring_name != contract_name
+                inherited_from = var_declaring_name if is_inherited else None
+
+                # Find all functions that write to this variable (including transitively)
+                writing_entry_points: Set[Any] = set()
+
+                for func in getattr(contract, "functions", []) or []:
+                    if not isinstance(func, FunctionContract):
+                        continue
+
+                    # Check if this function writes to the variable (directly or transitively)
+                    # all_state_variables_written includes variables written through internal calls
+                    try:
+                        all_written = func.all_state_variables_written()
+                    except Exception:
+                        all_written = getattr(func, "state_variables_written", []) or []
+
+                    if state_var in all_written:
+                        if _is_entry_point(func):
+                            writing_entry_points.add(func)
+                        else:
+                            # Trace back to find entry points that call this function
+                            callers = _find_calling_entry_points(func, contract)
+                            writing_entry_points.update(callers)
+
+                # Skip variables with no writing entry points
+                if not writing_entry_points:
+                    continue
+
+                # Build modifiers list (entry points that modify this variable)
+                modifiers: List[Dict[str, Any]] = []
+                for ep in writing_entry_points:
+                    ep_canonical = getattr(ep, "canonical_name", "") or ""
+                    ep_label = _as_label_for_function(ep)
+                    ep_contract = _contract_name(ep) or contract_name
+                    ep_loc = _location_from_source_mapping(ep, workspace_root)
+
+                    modifiers.append({
+                        "flowId": f"{file_rel}::{ep_canonical}",
+                        "label": ep_label,
+                        "contract": ep_contract,
+                        "location": ep_loc.__dict__ if ep_loc else None,
+                    })
+
+                # Sort modifiers by label for consistent output
+                modifiers.sort(key=lambda m: (m.get("contract", ""), m.get("label", "")))
+
+                var_obj = {
+                    "varId": f"{file_rel}::{contract_name}.{var_name}",
+                    "name": var_name,
+                    "type": var_type,
+                    "contract": contract_name,
+                    "inherited": is_inherited,
+                    "inheritedFrom": inherited_from,
+                    "location": var_loc.__dict__ if var_loc else None,
+                    "modifiers": modifiers,
+                }
+
+                # Group by file -> contract
+                if file_rel not in variables_by_file:
+                    variables_by_file[file_rel] = {}
+                if contract_name not in variables_by_file[file_rel]:
+                    variables_by_file[file_rel][contract_name] = []
+                variables_by_file[file_rel][contract_name].append(var_obj)
+
+    # Convert to output format
+    out_variables: List[Dict[str, Any]] = []
+    for file_path in sorted(variables_by_file.keys()):
+        contracts_data = variables_by_file[file_path]
+        for contract_name in sorted(contracts_data.keys()):
+            vars_list = contracts_data[contract_name]
+            # Sort variables by line number
+            vars_list.sort(key=lambda v: (v.get("location") or {}).get("line", 0))
+            out_variables.append({
+                "path": file_path,
+                "contract": contract_name,
+                "vars": vars_list,
+            })
+
+    return out_variables
 
 
 def _is_state_changing_entrypoint(func: Any) -> bool:
@@ -632,7 +833,10 @@ def main() -> int:
             out_files.append({"path": file_path, "entrypoints": eps})
         out_files.sort(key=lambda f: f.get("path", ""))
 
-        payload = {"version": 1, "ok": True, "files": out_files}
+        # Extract state variables and their writing entry points
+        out_variables = _extract_variables(sl, workspace_root, exclude_dependencies)
+
+        payload = {"version": 1, "ok": True, "files": out_files, "variables": out_variables}
         print(json.dumps(payload))
         return 0
 
