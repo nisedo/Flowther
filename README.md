@@ -8,7 +8,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 
 ## Screenshots
 
-**Default panel view** (All entry-points listed per contract)
+**Default panel view** (All entry points listed per contract)
 
 <img src="media/screenshot-1.png" alt="Default panel view" width="300">
 
@@ -65,7 +65,7 @@ git clone https://github.com/nisedo/Flowther.git && cd Flowther && npx @vscode/v
 - `flowther.solcPath`: optional `solc` path
 - `flowther.solcArgs`: optional solc args string
 - `flowther.filterPaths`: optional filter paths passed to Slither
-- `flowther.excludeDependencies`: hide dependency-defined entrypoints (default `true`)
+- `flowther.excludeDependencies`: hide dependency-defined entry points (default `true`)
 - `flowther.expandDependencies`: expand call graphs into dependency-defined functions (default `true`)
 - `flowther.showCallOrderNumbers`: prefix call nodes with execution order (default `true`)
 - `flowther.maxCallDepth`: call graph depth cap (default `10`)
