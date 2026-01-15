@@ -25,6 +25,7 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Right click an entry point to **Show Only This Flow** (focus mode)
 - Right click a file to **Hide File** or **Unhide All Flows In File**
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
+- **Mark as Reviewed**: right-click any function to mark it as reviewed (green checkmark icon) to track audit progress; state persists across sessions
 - **Variables panel**: shows state variables (excluding constants/immutables) and which entry points can modify them (directly or through internal calls); inherited variables show `from ContractName` indicator
 
 **Show Only This Flow (focus mode)**

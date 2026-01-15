@@ -293,6 +293,14 @@ def _collect_called_targets(func: Any) -> List[Tuple[str, Any, Optional[Any]]]:
                 if getattr(ir, "is_modifier_call", False):
                     continue
 
+                # Skip constructor calls that were already added as BaseConstructor
+                target_canonical = getattr(target, "canonical_name", None) or str(id(target))
+                if target_canonical in seen_base_ctors:
+                    continue
+                # Also add this constructor to seen set to avoid duplicates from different IR representations
+                if getattr(target, "is_constructor", False):
+                    seen_base_ctors.add(target_canonical)
+
                 # Ignore custom-error reverts (e.g. `revert MyError();`) as they are not function calls.
                 target_name = getattr(target, "name", None)
                 if isinstance(target_name, str) and target_name.startswith("revert "):

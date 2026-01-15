@@ -2,7 +2,7 @@
   "name": "flowther",
   "displayName": "Flowther",
   "description": "Workflow explorer for Solidity projects using Slither",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "publisher": "nisedo",
   "license": "MIT",
   "repository": {
@@ -31,7 +31,10 @@
     "onCommand:flowther.unhideAllFlows",
     "onCommand:flowther.hideFile",
     "onCommand:flowther.unhideFlowsInFile",
-    "onCommand:flowther.unhideAllFiles"
+    "onCommand:flowther.unhideAllFiles",
+    "onCommand:flowther.markReviewed",
+    "onCommand:flowther.unmarkReviewed",
+    "onCommand:flowther.clearAllReviewed"
   ],
   "contributes": {
     "viewsContainers": {
@@ -104,6 +107,21 @@
         "title": "Unhide All Files",
         "category": "Flowther",
         "icon": "$(files)"
+      },
+      {
+        "command": "flowther.markReviewed",
+        "title": "Mark as Reviewed",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.unmarkReviewed",
+        "title": "Unmark as Reviewed",
+        "category": "Flowther"
+      },
+      {
+        "command": "flowther.clearAllReviewed",
+        "title": "Clear All Reviewed",
+        "category": "Flowther"
       }
     ],
     "menus": {
@@ -132,12 +150,12 @@
       "view/item/context": [
         {
           "command": "flowther.hideFlow",
-          "when": "view == flowther.workflows && viewItem == flowther.entrypoint",
+          "when": "view == flowther.workflows && viewItem =~ /^flowther\\.entrypoint/",
           "group": "flowther"
         },
         {
           "command": "flowther.focusFlow",
-          "when": "view == flowther.workflows && viewItem == flowther.entrypoint",
+          "when": "view == flowther.workflows && viewItem =~ /^flowther\\.entrypoint/",
           "group": "flowther"
         },
         {
@@ -149,6 +167,16 @@
           "command": "flowther.unhideFlowsInFile",
           "when": "view == flowther.workflows && viewItem == flowther.file",
           "group": "flowther"
+        },
+        {
+          "command": "flowther.markReviewed",
+          "when": "view == flowther.workflows && (viewItem == flowther.entrypoint || viewItem == flowther.call || viewItem == flowther.call.cycle)",
+          "group": "flowther@1"
+        },
+        {
+          "command": "flowther.unmarkReviewed",
+          "when": "view == flowther.workflows && (viewItem == flowther.entrypoint.reviewed || viewItem == flowther.call.reviewed)",
+          "group": "flowther@1"
         }
       ]
     },
