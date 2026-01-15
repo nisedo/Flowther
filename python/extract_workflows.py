@@ -496,6 +496,9 @@ def _extract_variables(
                 continue
             if getattr(contract, "is_interface", False):
                 continue
+            # Skip abstract contracts - their variables will appear in concrete child contracts
+            if getattr(contract, "is_abstract", False):
+                continue
 
             contract_name = getattr(contract, "name", "") or "<unknown>"
             contract_loc = _location_from_source_mapping(contract, workspace_root)
