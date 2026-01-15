@@ -506,14 +506,30 @@ def _extract_variables(
                 continue
             file_rel = contract_loc.file
 
-            # Get all state variables for this contract
-            state_vars = getattr(contract, "state_variables", []) or []
+            # Gather ALL state variables that can be written by this contract's functions
+            # This includes inherited variables that contract.state_variables misses
+            all_writable_vars: Dict[str, Any] = {}  # canonical_name -> var object
 
-            for state_var in state_vars:
-                # Skip constant and immutable variables (cannot be modified after deployment)
+            # First, get variables from contract.state_variables (direct + some inherited)
+            for state_var in getattr(contract, "state_variables", []) or []:
                 if getattr(state_var, "is_constant", False) or getattr(state_var, "is_immutable", False):
                     continue
+                canonical = getattr(state_var, "canonical_name", None)
+                if canonical:
+                    all_writable_vars[canonical] = state_var
 
+            # Then, add variables from contract.all_state_variables_written (includes inherited)
+            try:
+                for state_var in getattr(contract, "all_state_variables_written", []) or []:
+                    if getattr(state_var, "is_constant", False) or getattr(state_var, "is_immutable", False):
+                        continue
+                    canonical = getattr(state_var, "canonical_name", None)
+                    if canonical and canonical not in all_writable_vars:
+                        all_writable_vars[canonical] = state_var
+            except Exception:
+                pass
+
+            for var_canonical, state_var in all_writable_vars.items():
                 var_name = getattr(state_var, "name", "") or "<unknown>"
                 var_type = str(getattr(state_var, "type", "")) or "unknown"
                 var_loc = _location_from_source_mapping(state_var, workspace_root)
@@ -538,7 +554,9 @@ def _extract_variables(
                     except Exception:
                         all_written = getattr(func, "state_variables_written", []) or []
 
-                    if state_var in all_written:
+                    # Compare by canonical name since object identity fails for inherited variables
+                    written_canonicals = {getattr(v, "canonical_name", None) for v in all_written}
+                    if var_canonical in written_canonicals:
                         if _is_entry_point(func):
                             writing_entry_points.add(func)
                         else:
@@ -592,8 +610,12 @@ def _extract_variables(
         contracts_data = variables_by_file[file_path]
         for contract_name in sorted(contracts_data.keys()):
             vars_list = contracts_data[contract_name]
-            # Sort variables by line number
-            vars_list.sort(key=lambda v: (v.get("location") or {}).get("line", 0))
+            # Sort variables by line number (inherited vars without location go to end)
+            vars_list.sort(key=lambda v: (
+                0 if v.get("location") else 1,
+                (v.get("location") or {}).get("line", 0),
+                v.get("name", "")
+            ))
             out_variables.append({
                 "path": file_path,
                 "contract": contract_name,
