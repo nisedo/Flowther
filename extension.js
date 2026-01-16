@@ -306,6 +306,11 @@ class WorkflowsProvider {
     return [];
   }
 
+  getParent(element) {
+    if (!element) return undefined;
+    return element._parent || undefined;
+  }
+
   async focusFlow(node) {
     if (!node || node.kind !== "entrypoint" || !node.flowId) {
       return;
@@ -543,13 +548,15 @@ class WorkflowsProvider {
     if (!node || !this._treeView) return;
     const children = node.calls || [];
     if (children.length === 0) return;
-    // Reveal this node expanded
+    // Reveal and expand this node
     try {
       await this._treeView.reveal(node, { expand: true, select: false, focus: false });
     } catch (e) {
-      // ignore reveal errors
+      // ignore
     }
-    // Recursively expand children
+    // Small delay to let tree update
+    await new Promise((r) => setTimeout(r, 10));
+    // Recursively expand all children
     for (const child of children) {
       await this._expandNodeRecursively(child);
     }
@@ -610,6 +617,21 @@ class WorkflowsProvider {
         }
         return String(a.label || "").localeCompare(String(b.label || ""));
       });
+    }
+
+    // Set parent references for getParent() support (needed for reveal to work)
+    for (const file of this._files) {
+      for (const ep of file.entrypoints || []) {
+        ep._parent = file;
+        this._setParentRefs(ep);
+      }
+    }
+  }
+
+  _setParentRefs(node) {
+    for (const child of node.calls || []) {
+      child._parent = node;
+      this._setParentRefs(child);
     }
   }
 }

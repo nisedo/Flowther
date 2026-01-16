@@ -22,7 +22,8 @@ Flowther shows **state-changing entry points** in a Solidity workspace and rende
 - Click any node to jump to its definition (or to the callsite when no definition exists, e.g. `abi.encode`, `keccak256`, `bytes.concat`)
 - Jump highlights the target line for ~0.5s
 - Right click an entry point to **Hide Flow**
-- Right click an entry point to **Show Only This Flow** (focus mode)
+- Right click an entry point to **Show Only This Flow** (focus mode, auto-expands all calls)
+- Right click any function to **Expand All** nested calls
 - Right click a file to **Hide File** or **Unhide All Flows In File**
 - Call nodes show icons + call-type badges, and can optionally display call order numbers
 - **Mark as Reviewed**: right-click any function to mark it as reviewed (green checkmark icon) to track audit progress; state persists across sessions

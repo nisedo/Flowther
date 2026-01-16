@@ -218,8 +218,10 @@ _SOLIDITY_BUILTINS = {
     "blockhash",
     # Transient storage (EIP-1153)
     "tload", "tstore",
-    # Memory/calldata operations
-    "mload", "mstore", "calldataload",
+    # Memory/calldata/storage operations
+    "mload", "mstore", "calldataload", "sload", "sstore",
+    # Bit manipulation
+    "signextend",
     # Other
     "gasleft", "type",
 }

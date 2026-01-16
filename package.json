@@ -186,7 +186,7 @@
         {
           "command": "flowther.expandAll",
           "when": "view == flowther.workflows && viewItem =~ /^flowther\\.(entrypoint|call)/",
-          "group": "inline"
+          "group": "flowther@2"
         }
       ]
     },
