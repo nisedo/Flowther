@@ -30,12 +30,12 @@ function activate(context) {
   // Link providers for shared refresh
   workflowsProvider._variablesProvider = variablesProvider;
 
-  context.subscriptions.push(
-    vscode.window.createTreeView(WORKFLOWS_VIEW_ID, {
-      treeDataProvider: workflowsProvider,
-      showCollapseAll: true,
-    })
-  );
+  const workflowsTreeView = vscode.window.createTreeView(WORKFLOWS_VIEW_ID, {
+    treeDataProvider: workflowsProvider,
+    showCollapseAll: true,
+  });
+  workflowsProvider._treeView = workflowsTreeView;
+  context.subscriptions.push(workflowsTreeView);
 
   context.subscriptions.push(
     vscode.window.createTreeView(VARIABLES_VIEW_ID, {
@@ -94,6 +94,10 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("flowther.clearAllReviewed", () => workflowsProvider.clearAllReviewed())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("flowther.expandAll", (node) => workflowsProvider.expandAll(node))
   );
 
   // Initial load (best-effort, non-blocking)
@@ -510,6 +514,27 @@ class WorkflowsProvider {
   async clearAllReviewed() {
     await this._context.workspaceState.update(REVIEWED_KEY, []);
     this._onDidChangeTreeData.fire();
+  }
+
+  async expandAll(node) {
+    if (!node || !this._treeView) return;
+    await this._expandNodeRecursively(node);
+  }
+
+  async _expandNodeRecursively(node) {
+    if (!node || !this._treeView) return;
+    const children = node.calls || [];
+    if (children.length === 0) return;
+    // Reveal this node expanded
+    try {
+      await this._treeView.reveal(node, { expand: true, select: false, focus: false });
+    } catch (e) {
+      // ignore reveal errors
+    }
+    // Recursively expand children
+    for (const child of children) {
+      await this._expandNodeRecursively(child);
+    }
   }
 
   _getReviewId(node) {

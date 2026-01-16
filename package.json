@@ -122,6 +122,11 @@
         "command": "flowther.clearAllReviewed",
         "title": "Clear All Reviewed",
         "category": "Flowther"
+      },
+      {
+        "command": "flowther.expandAll",
+        "title": "Expand All",
+        "category": "Flowther"
       }
     ],
     "menus": {
@@ -177,6 +182,11 @@
           "command": "flowther.unmarkReviewed",
           "when": "view == flowther.workflows && (viewItem == flowther.entrypoint.reviewed || viewItem == flowther.call.reviewed)",
           "group": "flowther@1"
+        },
+        {
+          "command": "flowther.expandAll",
+          "when": "view == flowther.workflows && viewItem =~ /^flowther\\.(entrypoint|call)/",
+          "group": "inline"
         }
       ]
     },
