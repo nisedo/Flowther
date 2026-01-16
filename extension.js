@@ -7,7 +7,6 @@ const WORKFLOWS_VIEW_ID = "flowther.workflows";
 const VARIABLES_VIEW_ID = "flowther.variables";
 const HIDDEN_FLOWS_KEY = "flowther.hiddenFlows";
 const HIDDEN_FILES_KEY = "flowther.hiddenFiles";
-const HIDDEN_VARS_KEY = "flowther.hiddenVars";
 
 let jumpHighlightDecoration;
 let jumpHighlightTimeout;
