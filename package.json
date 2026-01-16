@@ -31,10 +31,7 @@
     "onCommand:flowther.unhideAllFlows",
     "onCommand:flowther.hideFile",
     "onCommand:flowther.unhideFlowsInFile",
-    "onCommand:flowther.unhideAllFiles",
-    "onCommand:flowther.markReviewed",
-    "onCommand:flowther.unmarkReviewed",
-    "onCommand:flowther.clearAllReviewed"
+    "onCommand:flowther.unhideAllFiles"
   ],
   "contributes": {
     "viewsContainers": {
@@ -109,21 +106,6 @@
         "icon": "$(files)"
       },
       {
-        "command": "flowther.markReviewed",
-        "title": "Mark as Reviewed",
-        "category": "Flowther"
-      },
-      {
-        "command": "flowther.unmarkReviewed",
-        "title": "Unmark as Reviewed",
-        "category": "Flowther"
-      },
-      {
-        "command": "flowther.clearAllReviewed",
-        "title": "Clear All Reviewed",
-        "category": "Flowther"
-      },
-      {
         "command": "flowther.expandAll",
         "title": "Expand All",
         "category": "Flowther"
@@ -174,19 +156,9 @@
           "group": "flowther"
         },
         {
-          "command": "flowther.markReviewed",
-          "when": "view == flowther.workflows && (viewItem == flowther.entrypoint || viewItem == flowther.call || viewItem == flowther.call.cycle)",
-          "group": "flowther@1"
-        },
-        {
-          "command": "flowther.unmarkReviewed",
-          "when": "view == flowther.workflows && (viewItem == flowther.entrypoint.reviewed || viewItem == flowther.call.reviewed)",
-          "group": "flowther@1"
-        },
-        {
           "command": "flowther.expandAll",
           "when": "view == flowther.workflows && viewItem =~ /^flowther\\.(entrypoint|call)/",
-          "group": "flowther@2"
+          "group": "flowther"
         }
       ]
     },

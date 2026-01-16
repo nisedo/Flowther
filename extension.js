@@ -8,7 +8,6 @@ const VARIABLES_VIEW_ID = "flowther.variables";
 const HIDDEN_FLOWS_KEY = "flowther.hiddenFlows";
 const HIDDEN_FILES_KEY = "flowther.hiddenFiles";
 const HIDDEN_VARS_KEY = "flowther.hiddenVars";
-const REVIEWED_KEY = "flowther.reviewed";
 
 let jumpHighlightDecoration;
 let jumpHighlightTimeout;
@@ -85,18 +84,6 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.markReviewed", (node) => workflowsProvider.markReviewed(node))
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.unmarkReviewed", (node) => workflowsProvider.unmarkReviewed(node))
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("flowther.clearAllReviewed", () => workflowsProvider.clearAllReviewed())
-  );
-
-  context.subscriptions.push(
     vscode.commands.registerCommand("flowther.expandAll", (node) => workflowsProvider.expandAll(node))
   );
 
@@ -166,7 +153,6 @@ class WorkflowsProvider {
   getTreeItem(element) {
     const config = vscode.workspace.getConfiguration("flowther");
     const showCallOrderNumbers = !!config.get("showCallOrderNumbers");
-    const reviewedSet = new Set(this._context.workspaceState.get(REVIEWED_KEY, []));
 
     if (element.kind === "message") {
       const item = new vscode.TreeItem(
@@ -182,13 +168,8 @@ class WorkflowsProvider {
         element.fileRel,
         vscode.TreeItemCollapsibleState.Collapsed
       );
-      // Check if all entrypoints in this file are reviewed
-      const entrypoints = element.entrypoints || [];
-      const allReviewed = entrypoints.length > 0 && entrypoints.every((ep) => ep.flowId && reviewedSet.has(ep.flowId));
-      item.contextValue = allReviewed ? "flowther.file.reviewed" : "flowther.file";
-      item.iconPath = allReviewed
-        ? new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed"))
-        : new vscode.ThemeIcon("file-code");
+      item.contextValue = "flowther.file";
+      item.iconPath = new vscode.ThemeIcon("file-code");
       item.tooltip = element.fileAbs;
       return item;
     }
@@ -200,11 +181,8 @@ class WorkflowsProvider {
           ? vscode.TreeItemCollapsibleState.Collapsed
           : vscode.TreeItemCollapsibleState.None
       );
-      const isReviewed = element.flowId && reviewedSet.has(element.flowId);
-      item.contextValue = isReviewed ? "flowther.entrypoint.reviewed" : "flowther.entrypoint";
-      item.iconPath = isReviewed
-        ? new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed"))
-        : entrypointIcon(element.label);
+      item.contextValue = "flowther.entrypoint";
+      item.iconPath = entrypointIcon(element.label);
       item.description = element.inheritedFrom
         ? `from ${element.inheritedFrom}`
         : element.contract;
@@ -228,18 +206,8 @@ class WorkflowsProvider {
           ? vscode.TreeItemCollapsibleState.Collapsed
           : vscode.TreeItemCollapsibleState.None
       );
-      const callReviewId = element.location?.file
-        ? `${element.location.file}:${element.location.line}:${element.label}`
-        : null;
-      const isReviewed = callReviewId && reviewedSet.has(callReviewId);
-      item.contextValue = isReviewed
-        ? "flowther.call.reviewed"
-        : element.cycle
-          ? "flowther.call.cycle"
-          : "flowther.call";
-      item.iconPath = isReviewed
-        ? new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed"))
-        : callIcon(element.kindLabel, element.cycle);
+      item.contextValue = element.cycle ? "flowther.call.cycle" : "flowther.call";
+      item.iconPath = callIcon(element.kindLabel, element.cycle);
       item.description = callDescription(element.contract, element.kindLabel);
       if (element.location?.file) {
         item.command = {
@@ -516,29 +484,6 @@ class WorkflowsProvider {
     }
   }
 
-  async markReviewed(node) {
-    const id = this._getReviewId(node);
-    if (!id) return;
-    const current = this._context.workspaceState.get(REVIEWED_KEY, []);
-    const next = Array.from(new Set([...current, id]));
-    await this._context.workspaceState.update(REVIEWED_KEY, next);
-    this._onDidChangeTreeData.fire();
-  }
-
-  async unmarkReviewed(node) {
-    const id = this._getReviewId(node);
-    if (!id) return;
-    const current = this._context.workspaceState.get(REVIEWED_KEY, []);
-    const next = current.filter((x) => x !== id);
-    await this._context.workspaceState.update(REVIEWED_KEY, next);
-    this._onDidChangeTreeData.fire();
-  }
-
-  async clearAllReviewed() {
-    await this._context.workspaceState.update(REVIEWED_KEY, []);
-    this._onDidChangeTreeData.fire();
-  }
-
   async expandAll(node) {
     if (!node || !this._treeView) return;
     await this._expandNodeRecursively(node);
@@ -560,15 +505,6 @@ class WorkflowsProvider {
     for (const child of children) {
       await this._expandNodeRecursively(child);
     }
-  }
-
-  _getReviewId(node) {
-    if (!node) return null;
-    if (node.kind === "entrypoint" && node.flowId) return node.flowId;
-    if (node.kind === "call" && node.location?.file) {
-      return `${node.location.file}:${node.location.line}:${node.label}`;
-    }
-    return null;
   }
 
   _rebuildFiles() {
