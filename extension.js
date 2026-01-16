@@ -318,6 +318,24 @@ class WorkflowsProvider {
     } else {
       await this.refresh({ silent: true });
     }
+    // Expand all calls in the focused flow
+    const focusedNode = this._findFocusedEntrypoint();
+    if (focusedNode) {
+      // Small delay to let tree rebuild complete
+      setTimeout(() => this.expandAll(focusedNode), 100);
+    }
+  }
+
+  _findFocusedEntrypoint() {
+    if (!this._focusFlowId) return null;
+    for (const file of this._files) {
+      for (const ep of file.entrypoints || []) {
+        if (ep.flowId === this._focusFlowId) {
+          return ep;
+        }
+      }
+    }
+    return null;
   }
 
   async clearFocus() {
