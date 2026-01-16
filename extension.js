@@ -178,8 +178,13 @@ class WorkflowsProvider {
         element.fileRel,
         vscode.TreeItemCollapsibleState.Collapsed
       );
-      item.contextValue = "flowther.file";
-      item.iconPath = new vscode.ThemeIcon("file-code");
+      // Check if all entrypoints in this file are reviewed
+      const entrypoints = element.entrypoints || [];
+      const allReviewed = entrypoints.length > 0 && entrypoints.every((ep) => ep.flowId && reviewedSet.has(ep.flowId));
+      item.contextValue = allReviewed ? "flowther.file.reviewed" : "flowther.file";
+      item.iconPath = allReviewed
+        ? new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed"))
+        : new vscode.ThemeIcon("file-code");
       item.tooltip = element.fileAbs;
       return item;
     }
